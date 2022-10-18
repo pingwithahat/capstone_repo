@@ -28,23 +28,19 @@ def chess_checker_function(df):
     }
 
     def schema_checker(df, cols):
-#         for i in cols:
-#             if i not in df.columns:
-#                 print(f'Column {i} not found')
-# #                 return False
-#         return True
         missing_cols = [i for i in cols if i not in df.columns]
         if len(missing_cols)!=0:
-            print(f'Column {i} not found' for i in missing_cols)
+            for col in [f'Column {i} not found' for i in missing_cols]:
+                print(col)
             return False
         else:
             return True
 
 
     def dtype_checker(df, schema):
-        wrong_dtypes = [[i, j] for i, j in schema.items() if i in df.columns and df[i].dtype!=j]
+        wrong_dtypes = [[i, j, df[i].dtype] for i, j in schema.items() if i in df.columns and df[i].dtype!=j]
         if len(wrong_dtypes)!=0:
-            for row in [f'Column {k[0]} does not match datatype {k[1]}' for k in wrong_dtypes]:
+            for row in [f'Column {k[0]} does not match datatype {k[1]}, is actually {k[2]}' for k in wrong_dtypes]:
                 print(row)
             return False
         else:
@@ -53,7 +49,7 @@ def chess_checker_function(df):
         
     schema_check = schema_checker(df, expected_schema.keys())
     dtype_check = dtype_checker(df, expected_schema)
-    return print(f'Expected columns: {schema_check} \nExpected dtypes: {dtype_check}')
+    return print(f'Expected columns present: {schema_check} \nExpected dtypes present: {dtype_check}')
 
 
 def change_comp_columns(df):

@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 import re
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.metrics import classification_report, plot_confusion_matrix
+import matplotlib.pyplot as plt
+
 
 def chess_checker_function(df):
     expected_schema = {
@@ -28,6 +32,20 @@ def chess_checker_function(df):
         'WhiteIsComp': 'object'  
     }
 
+    def check_comp_columns(df):
+        if 'BlackIsComp' not in df.columns:
+            print('BlackIsComp not present; correting with NaNs')
+            df['BlackIsComp'] = np.NaN
+        else:
+            pass
+
+        if 'WhiteIsComp' not in df.columns:
+            print('WhiteIsComp not present; correcting with NaNs')
+            df['WhiteIsComp'] = np.NaN
+        else:
+            pass
+        return df
+       
     def schema_checker(df, cols):
         missing_cols = [i for i in cols if i not in df.columns]
         if len(missing_cols)!=0:
@@ -36,7 +54,6 @@ def chess_checker_function(df):
             return False
         else:
             return True
-
 
     def dtype_checker(df, schema):
         wrong_dtypes = [[i, j, df[i].dtype] for i, j in schema.items() if i in df.columns and df[i].dtype!=j]
@@ -47,10 +64,12 @@ def chess_checker_function(df):
         else:
             return True
         
-    print(f'For year: {df.Date[0].year}')    
+    print(f'For year: {df.Date.iloc[-10].year}')
+    df = check_comp_columns(df)
     schema_check = schema_checker(df, expected_schema.keys())
     dtype_check = dtype_checker(df, expected_schema)
-    return print(f'Expected columns present: {schema_check} \nExpected dtypes present: {dtype_check}')
+    print(f'Expected columns present: {schema_check} \nExpected dtypes present: {dtype_check}')
+    return df
 
 
 def change_comp_columns(df):
@@ -59,10 +78,10 @@ def change_comp_columns(df):
     nocomp_df = df.copy()
     
     ## check number of unique in blackiscomp and whiteiscomp (should be 2)
-    assert all([nocomp_df[x].nunique(dropna=False)==2 for x in ['WhiteIsComp', 'BlackIsComp']]), 'More than two unique values in a XIsComp column (including nan)'
+    assert all([nocomp_df[x].nunique(dropna=False)<3 for x in ['WhiteIsComp', 'BlackIsComp']]), 'More than two unique values in a XIsComp column (including nan)'
     
-    ## check one of the unique values are 'Yes'
-    assert all(['Yes' in nocomp_df[x].unique() for x in ['WhiteIsComp', 'BlackIsComp']]), 'Missing "Yes" in one of the XIsComp column'
+#     ## check one of the unique values are 'Yes'
+#     assert all(['Yes' in nocomp_df[x].unique() for x in ['WhiteIsComp', 'BlackIsComp']]), 'Missing "Yes" in one of the XIsComp column'
 
     ## assign 1 and 0 to blackiscomp and whiteiscomp
 
@@ -71,7 +90,7 @@ def change_comp_columns(df):
 
     ## make new 'nocomp' column which depends on blackiscomp==1 and whiteiscomp==1
 
-    nocomp_df['NoComp'] = np.where(zip(nocomp_df['WhiteIsComp'], nocomp_df['BlackIsComp'])==[0, 0], np.int8(1), np.int8(0))
+    nocomp_df['NoComp'] = np.where(next(zip(nocomp_df['WhiteIsComp'], nocomp_df['BlackIsComp']))==(0, 0), np.int8(1), np.int8(0))
     
     return nocomp_df
 
@@ -125,9 +144,16 @@ def keep_decisive_results(df):
     comp_w_w = ((temp_['Result']=='1-0')&(temp_['WhiteIsComp']==1))
     # Computer wins as black
     comp_b_w = ((temp_['Result']=='0-1')&(temp_['BlackIsComp']==1))
+    # No cheater, no draw
+    no_comp_wb_w = ((temp_['Result']!='1/2-1/2')&(temp_['NoComp']==1))
+#     temp_ = temp_[
+#         ((temp_['Result']=='1-0')&(temp_['WhiteIsComp']==1))|
+#         ((temp_['Result']=='0-1')&(temp_['BlackIsComp']==1))|
+#         ((temp_['Result']!='1/2-1/2')&(temp_['NoComp']==1))].reset_index(drop=True)
     temp_ = temp_[
-        ((temp_['Result']=='1-0')&(temp_['WhiteIsComp']==1))|
-        ((temp_['Result']=='0-1')&(temp_['BlackIsComp']==1))]
+        comp_w_w|
+        comp_b_w|
+        no_comp_wb_w].reset_index(drop=True)
     return temp_
     
 
@@ -136,7 +162,8 @@ def drop_uneeded_cols(df=None, list_of_cols=None, what_cols=False):
     By default, this will drop:
     'Event', 'Site', 'Date', 'Round', 'White', 'Black', 'BlackClock', 'FICSGamesDBGameNo', 'Time', 'WhiteClock',
         'Result'
-        
+    
+    Set list_of_cols='None' to drop no columns.
             
     Assert that df is dataframe
     
@@ -149,6 +176,9 @@ def drop_uneeded_cols(df=None, list_of_cols=None, what_cols=False):
     
     if what_cols==True:
         return(print(col_to_drop))
+    elif list_of_cols=='None' and df is not None:
+        print(f'Dropping no columns...')
+        return temp_
     elif list_of_cols is not None and df is not None:
         temp_ = df.drop(columns=list_of_cols)
         print(f'Dropped columns: {list_of_cols}\n')
@@ -164,33 +194,65 @@ def split_timeformat(df):
     temp_ = df.copy()
     temp_[['TimeControl_Base', 'TimeControl_Inc']]=[
     (int(str.split(x, sep='+')[0]), int(str.split(x, sep='+')[1])) for x in temp_.TimeControl.values]
+#     temp_[['TimeControl_Base', 'TimeControl_Inc']]=[
+#     (int(str.split(x, sep='+')[0]), int(str.split(x, sep='+')[1])) for x in temp_.TimeControl]
     temp_ = temp_.drop(columns=['TimeControl'])
     return temp_
+   
     
-    
-def clean_pickle(pickle_df):
+def clean_pickle(pickle_df, list_of_cols=None):
     chess_checker_function(pickle_df)
     temp_ = change_comp_columns(pickle_df)
     chess_nan_checker(temp_)
     temp_ = keep_decisive_results(temp_)
     print(f'Keeping decisive results...')
-    temp_ = drop_uneeded_cols(temp_)
+    temp_ = drop_uneeded_cols(temp_, list_of_cols)
     temp_ = split_timeformat(temp_)
     return temp_
 
 
-def clean_pickles(list_of_pickle_df):
+def clean_pickles(list_of_pickle_df, list_of_cols=None):
     list_of_cleaned_pickle_df = []
     for pickle_df in list_of_pickle_df:
-        list_of_cleaned_pickle_df.append(clean_pickle(pickle_df))
+        list_of_cleaned_pickle_df.append(clean_pickle(pickle_df, list_of_cols))
         
     return list_of_cleaned_pickle_df
 
 
-def concatenate_cleaned_pickles(list_of_pickle_df):
-    temp_ = pd.concat(clean_pickles(list_of_pickle_df)).reset_index(drop=True)
+def drop_duplicates(temp_):
+    pre_shape = temp_.shape
+    print(f'Shape pre-drop: {pre_shape}')
+    print(f'Dropping duplicates...')
+    temp_ = temp_[~temp_.duplicated(subset=[col for col in temp_.columns if col not in ['emt', 'moves']])]
+    post_shape = temp_.shape
+    print(f'Shape post-drop: {post_shape}\n Duplicates dropped: {pre_shape[0]-post_shape[0]}')        
     return temp_
-        
+
+
+def does_plycount_match_moves(df):
+    '''
+    This checks that the number in the PlyCount cell matches the length of the moves list
+    
+    Should assert that df is df, PlyCount is a column and one of ints, moves is a column  and one of lists
+    '''
+    if all([len(row[0])==row[1] for row in zip(df.moves, df.PlyCount)]):
+        print('All PlyCount values match the length of moves-list')
+        return True
+    else:
+        print('Not all PlyCount values match the length of moves-list')
+        return False
+    
+
+def concatenate_cleaned_pickles(list_of_pickle_df, list_of_cols=None, drop_dups=True):
+    temp_ = pd.concat(clean_pickles(list_of_pickle_df, list_of_cols)).reset_index(drop=True)
+    does_plycount_match_moves(temp_)
+    if drop_dups==True:
+        temp_ = drop_duplicates(temp_)
+        return temp_
+    else:
+        print('Not dropping duplicates...')
+        return temp_    
+
      
 def X_y_split_simple(df):
     X_ = df.drop(columns=['WhiteIsComp', 'BlackIsComp', 'NoComp'])
@@ -217,9 +279,95 @@ def y_convert_to_ohe_vec(y):
     if len(y.columns)==3:
         if all(y.NoComp==0):
             y_ = pd.DataFrame(np.where(y.WhiteIsComp==1, 0, 1), columns=['0_WhiteIsComp_1_BlackIsComp'])
+            print('All games have a cheater: use "sparse_categorical_crossentropy"')
             return y_
         else:
             y_ = pd.DataFrame([[row] for row in y.values], columns=['WhiteIsComp_BlackIsComp_NoComp'])
-            return y_        
+            print('Some games contain no cheaters: use "categorical_crossentropy"')
+            return y_
     else:
         return(print('Function only currently supporting y having WhiteIsComp, BlackIsComp, and NoComp'))
+    
+    
+def y_convert_to_ints(y, expecting_binary=False):
+    '''
+    Note: NN loss will have to be 'sparse_categorical_crossentropy' if y's are integers.
+    
+    Return integers for y where:
+        0 indicates white was cheating
+        1 indicates black was cheating
+        2 indicates noone was cheating
+        
+    The corresponding 'row' value will be:
+        [1,0,0] indicates white was cheating
+        [0,1,0] indicates black was cheating
+        [0,0,1] indicates no-one was cheating
+        
+        
+    Have a check for explicit 'options=3' where user can input options value, or check len(y.columns)==3
+    '''
+    if len(y.columns)==3:
+        if expecting_binary==True and all(y.NoComp==0):
+            y_ = pd.DataFrame(np.where(y.WhiteIsComp==1, 0, 1), columns=['0_WhiteIsComp_1_BlackIsComp'])
+            print('All games have a cheater')
+            return y_
+        else:
+            y_ = pd.DataFrame([np.int8(0) if all(row==[1,0,0]) else np.int8(1) if all(row==[0,1,0]) else np.int8(2) for row in y.values], columns=['WhiteIsComp_BlackIsComp_NoComp'])
+            if all(y.NoComp==0):
+                print('All games have a cheater')
+            else:
+                print('Some games contain no cheaters')
+            return y_
+    else:
+        return(print('Function only currently supporting y having WhiteIsComp, BlackIsComp, and NoComp'))
+    
+    
+def OHE_ECO(X_train, X_test):   
+    ohe_ = OneHotEncoder(sparse=False, dtype=np.int8(), handle_unknown='ignore')
+    X_train_temp_ = pd.merge(
+        left=X_train.drop(columns=['ECO']).reset_index(drop=True),
+        right=pd.DataFrame(ohe_.fit_transform(X_train[['ECO']]),
+                           columns=ohe_.get_feature_names_out()),
+        how='left',
+        left_index=True,
+        right_index=True)
+    
+    X_test_temp_ = pd.merge(
+        left=X_test.drop(columns=['ECO']).reset_index(drop=True),
+        right=pd.DataFrame(ohe_.transform(X_test[['ECO']]),
+                           columns=ohe_.get_feature_names_out()),
+        how='left',
+        left_index=True,
+        right_index=True)
+    return X_train_temp_, X_test_temp_, ohe_
+
+
+def class_model_eval_logreg(class_model_, X_train_, X_test_, y_train_, y_test_, digits_=4):
+    '''
+    Note: Intended for Logistic Regression (may work for others), but not a DT or Random Forest
+    
+    '''
+    # print the accuracy on the training and test set
+    print(f'The accuracy score on the training data is: {class_model_.score(X_train_, y_train_)}')
+    print(f'The accuracy score on the testing data is: {class_model_.score(X_test_, y_test_)}')
+    
+    # plot the confusion matrix
+    plot_confusion_matrix(class_model_, X_test_, y_test_)
+    plt.show()
+    
+    # classification report
+    class_model_pred = class_model_.predict(X_test_)
+    report_ = classification_report(y_test_, class_model_pred, digits=digits_)
+    print(report_)
+    
+    # model results
+    model_results_ = pd.DataFrame(classification_report(y_test_, class_model_pred,
+                                                        digits=digits_, output_dict=True)).loc[
+        ['precision', 'recall', 'f1-score'],
+        ['0', '1', 'accuracy']]
+    
+    # model coefficients
+    model_coeffs_ = pd.DataFrame(data=abs(class_model_.coef_),
+                                columns=class_model_.feature_names_in_).T
+    
+    return report_, model_results_, model_coeffs_

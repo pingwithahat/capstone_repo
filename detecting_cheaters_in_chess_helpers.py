@@ -138,6 +138,23 @@ def chess_nan_checker(df, list_of_cols=['BlackIsComp', 'WhiteIsComp']):
     return print(summary)
 
 
+def drop_no_move_games(df):
+    if any([val_==[] for val_ in df.moves]):
+        print(f'Some games have no moves \nDropping those games...')
+        temp_ = df[[val_!=[] for val_ in df.moves]].reset_index(drop=True)
+        return temp_
+    else:
+        print('All games have moves')
+        return df
+
+
+def any_missing_emt(df):
+    if any([val_==[] for val_ in df.emt]):
+        return(print('Some games missing emt values...'))
+    else:
+        return(print('No games missing emt values'))
+
+
 def keep_decisive_results(df):
     temp_ = df.copy()
     # Computer wins as white 
@@ -206,6 +223,8 @@ def clean_pickle(pickle_df, list_of_cols=None):
     chess_nan_checker(temp_)
     temp_ = keep_decisive_results(temp_)
     print(f'Keeping decisive results...')
+    temp_ = drop_no_move_games(temp_)
+    any_missing_emt(temp_)
     temp_ = drop_uneeded_cols(temp_, list_of_cols)
     temp_ = split_timeformat(temp_)
     return temp_
@@ -371,3 +390,37 @@ def class_model_eval_logreg(class_model_, X_train_, X_test_, y_train_, y_test_, 
                                 columns=class_model_.feature_names_in_).T
     
     return report_, model_results_, model_coeffs_
+
+
+def extract_emt_elements(game_emts):
+    times_ = [float(re.search('[0-9]+\.[0-9]+', time_).group()) for time_ in game_emts]
+    return times_
+
+
+def extract_all_emt_elements(series_of_games_emts):
+    times_ = [extract_emt_elements(game_) for game_ in series_of_games_emts]
+    return times_
+
+
+def how_games_ended(series_of_games_emts):
+    '''
+    test_ = df_2021_2017_titled_distinv.copy()
+    test_['endings'] = how_games_ended(test_.emt)
+    test_.head(2)
+    '''
+    
+#     series_of_games_emts = [game_ if game_!=[] else ['none'] for game_ in series_of_games_emts]
+#     endings_ = [re.search('[a-zA-Z]{5}.[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() for game_ in series_of_games_emts]
+#     endings_ = [re.search('(Black|White).[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() for game_ in series_of_games_emts]
+    endings_ = [re.search('(Black|White).[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() if game_!=[] else [] for game_ in series_of_games_emts]
+    
+    return endings_
+
+
+def how_games_ended_confirmed_moves_and_emt(series_of_games_emts):
+#     series_of_games_emts = [game_ if game_!=[] else ['none'] for game_ in series_of_games_emts]
+#     endings_ = [re.search('[a-zA-Z]{5}.[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() for game_ in series_of_games_emts]
+#     endings_ = [re.search('(Black|White).[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() for game_ in series_of_games_emts]
+    endings_ = [re.search('(Black|White).[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() for game_ in series_of_games_emts]
+    
+    return endings_

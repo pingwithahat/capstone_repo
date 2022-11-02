@@ -402,6 +402,46 @@ def extract_all_emt_elements(series_of_games_emts):
     return times_
 
 
+def get_white_emts(list_of_emts):
+    '''
+    Will receive a list of a games emt values
+    '''
+    
+    white_emts = list_of_emts[::2]
+    return white_emts
+
+
+def get_black_emts(list_of_emts):
+    '''
+    Will receive a list of a games emt values
+    '''
+    
+    black_emts = list_of_emts[1::2]
+    return black_emts
+
+
+def separate_all_white_and_black_emts(df):
+    '''
+    This will receive a dataframe with a column of emt_time (Note: this is not the same as emt, emt_time has only float values)
+    This will output the dataframe with two new columns: white_emt and black_emt
+    '''
+    
+    df[['white_emt', 'black_emt']]=[[get_white_emts(list_of_emts[0]), get_black_emts(list_of_emts[0])] for list_of_emts in zip(df.emt_time)]
+    
+    return df
+
+
+def separate_all_white_and_black_average_emts(df, rounded_dp=5):
+    '''
+    This will receive a dataframe with a column of emt_time (Note: this is not the same as emt, emt_time has only float values)
+    This will output the dataframe with two new columns: av_white_emt and av_black_emt
+    '''
+    
+    df[['av_white_emt', 'av_black_emt']]=[[np.round(np.mean(get_white_emts(list_of_emts[0])), rounded_dp), np.round(np.mean(get_black_emts(list_of_emts[0])), rounded_dp)] for list_of_emts in zip(df.emt_time)]
+    
+    return df
+
+
 def how_games_ended(series_of_games_emts):
     '''
     test_ = df_2021_2017_titled_distinv.copy()
@@ -424,3 +464,91 @@ def how_games_ended_confirmed_moves_and_emt(series_of_games_emts):
     endings_ = [re.search('(Black|White).[a-zA-Z]+.[a-zA-Z]*.[a-zA-Z]*', game_[-1]).group() for game_ in series_of_games_emts]
     
     return endings_
+
+
+def evaluate_game(game):
+    # Loop for moves in a single game
+    evaluations_ = []
+    board=chess.Board()
+    for move in game:
+        evalution_ = engine.analyse(board, limit, multipv='5')
+        board.push_san(move)
+
+        evaluations_.append(evalution_)
+    
+    
+    return evaluations_
+
+
+def evaluate_games(df, save_rate=1000, path='./'): # risky to use function on many games in case something goes wrong
+    list_of_evaluations = []
+    game_count = 0
+    
+    for game in zip(df.moves):    
+        try:
+            game_eval_ = evaluate_game(game[0])
+            list_of_evaluations.append(game_eval_)
+
+            game_count+=1
+
+            if game_count%save_rate==0:
+                print(f'{game_count} games completed\nSaving now...')
+                joblib.dump(list_of_evaluations, 
+                            f'{path}{game_count}_.pkl',
+                           compress=3)
+                t=time.localtime()[0:6]
+                print(f'Saved at {t[0]}/{t[1]}/{t[2]} {t[3]}:{t[4]}:{t[5]}')
+            elif game_count%100==0:
+                print(f'{game_count}')
+                t=time.localtime()[0:6]
+                print(f'At {t[0]}/{t[1]}/{t[2]} {t[3]}:{t[4]}:{t[5]}')
+            else:
+                pass
+            
+        except KeyboardInterrupt:
+            print('Keyboard Interrupt')
+            print(f'{game_count}')
+            return list_of_evaluations
+#             break
+    
+        except:
+            list_of_evaluations.append(['Error occured'])
+
+            game_count+=1        
+
+            print(f'Error occured on game {game_count}')
+        
+    return list_of_evaluations
+
+
+def get_abs_elo_diff(df):
+    '''
+    Pass in a df with BlackElo and WhiteElo and get back the absolute value of elo difference
+    '''
+    
+    df['abs_elo_diff']=[abs(row[0]-row[1]) for row in df[['WhiteElo', 'BlackElo']].values]
+    
+    return df
+
+
+def get_rel_elo_diff(df):
+    '''
+    Pass in a df with BlackElo and WhiteElo and get back the relative value of elo difference
+        A positive number means that WhiteElo>BlackElo
+    '''
+    
+    df['abs_elo_diff']=[row[0]-row[1] for row in df[['WhiteElo', 'BlackElo']].values]
+    
+    return df
+
+
+def keep_rated_games(df):
+    df = df[[' rated' in x for x in df.Event]]
+    
+    return df
+
+
+def keep_time_length_games_greater_than(df, time_control_base_minimum=3600):
+    df = df[df['TimeControl_Base']>=time_control_base_minimum]
+    
+    return df

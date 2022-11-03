@@ -64,7 +64,8 @@ def chess_checker_function(df):
         else:
             return True
         
-    print(f'For year: {df.Date.iloc[-10].year}')
+#     print(f'For year: {df.Date.iloc[-10].year}')
+    print(f'For year: {df.Date.mean().year}')
     df = check_comp_columns(df)
     schema_check = schema_checker(df, expected_schema.keys())
     dtype_check = dtype_checker(df, expected_schema)
@@ -73,26 +74,26 @@ def chess_checker_function(df):
 
 
 def change_comp_columns(df):
-    ## make copy df
-
-    nocomp_df = df.copy()
-    
+    '''
+    Expects there to be WhiteIsComp and BlackIsComp columns, and that 'Yes' indicates which colour is the computer.
+    '''
+   
     ## check number of unique in blackiscomp and whiteiscomp (should be 2)
-    assert all([nocomp_df[x].nunique(dropna=False)<3 for x in ['WhiteIsComp', 'BlackIsComp']]), 'More than two unique values in a XIsComp column (including nan)'
+    assert all([df[x].nunique(dropna=False)<3 for x in ['WhiteIsComp', 'BlackIsComp']]), 'More than two unique values in a XIsComp column (including nan)'
     
 #     ## check one of the unique values are 'Yes'
 #     assert all(['Yes' in nocomp_df[x].unique() for x in ['WhiteIsComp', 'BlackIsComp']]), 'Missing "Yes" in one of the XIsComp column'
 
     ## assign 1 and 0 to blackiscomp and whiteiscomp
 
-    nocomp_df['WhiteIsComp'] = np.where(nocomp_df['WhiteIsComp']=='Yes', np.int8(1), np.int8(0))
-    nocomp_df['BlackIsComp'] = np.where(nocomp_df['BlackIsComp']=='Yes', np.int8(1), np.int8(0))
+    df['WhiteIsComp'] = np.where(df['WhiteIsComp']=='Yes', np.int8(1), np.int8(0))
+    df['BlackIsComp'] = np.where(df['BlackIsComp']=='Yes', np.int8(1), np.int8(0))
 
     ## make new 'nocomp' column which depends on blackiscomp==1 and whiteiscomp==1
 
-    nocomp_df['NoComp'] = np.where(next(zip(nocomp_df['WhiteIsComp'], nocomp_df['BlackIsComp']))==(0, 0), np.int8(1), np.int8(0))
+    df['NoComp'] = np.where(next(zip(df['WhiteIsComp'], df['BlackIsComp']))==(0, 0), np.int8(1), np.int8(0))
     
-    return nocomp_df
+    return df
 
 
 def chess_nan_checker(df, list_of_cols=['BlackIsComp', 'WhiteIsComp']): 
@@ -156,22 +157,22 @@ def any_missing_emt(df):
 
 
 def keep_decisive_results(df):
-    temp_ = df.copy()
+#     temp_ = df.copy()
     # Computer wins as white 
-    comp_w_w = ((temp_['Result']=='1-0')&(temp_['WhiteIsComp']==1))
+    comp_w_w = ((df['Result']=='1-0')&(df['WhiteIsComp']==1))
     # Computer wins as black
-    comp_b_w = ((temp_['Result']=='0-1')&(temp_['BlackIsComp']==1))
+    comp_b_w = ((df['Result']=='0-1')&(df['BlackIsComp']==1))
     # No cheater, no draw
-    no_comp_wb_w = ((temp_['Result']!='1/2-1/2')&(temp_['NoComp']==1))
+    no_comp_wb_w = ((df['Result']!='1/2-1/2')&(df['NoComp']==1))
 #     temp_ = temp_[
 #         ((temp_['Result']=='1-0')&(temp_['WhiteIsComp']==1))|
 #         ((temp_['Result']=='0-1')&(temp_['BlackIsComp']==1))|
 #         ((temp_['Result']!='1/2-1/2')&(temp_['NoComp']==1))].reset_index(drop=True)
-    temp_ = temp_[
+    df = df[
         comp_w_w|
         comp_b_w|
         no_comp_wb_w].reset_index(drop=True)
-    return temp_
+    return df
     
 
 def drop_uneeded_cols(df=None, list_of_cols=None, what_cols=False):
@@ -192,7 +193,8 @@ def drop_uneeded_cols(df=None, list_of_cols=None, what_cols=False):
     ]
     
     if what_cols==True:
-        return(print(col_to_drop))
+        
+        return(print(f' Default columns to drop are: {col_to_drop}'))
     elif list_of_cols=='None' and df is not None:
         print(f'Dropping no columns...')
         return temp_
@@ -208,45 +210,17 @@ def drop_uneeded_cols(df=None, list_of_cols=None, what_cols=False):
     
 
 def split_timeformat(df):
-    temp_ = df.copy()
-    temp_[['TimeControl_Base', 'TimeControl_Inc']]=[
-    (int(str.split(x, sep='+')[0]), int(str.split(x, sep='+')[1])) for x in temp_.TimeControl.values]
+    '''
+    Expects there to be a TimeControl column
+    '''
+    
+    df[['TimeControl_Base', 'TimeControl_Inc']]=[
+    (int(str.split(x, sep='+')[0]), int(str.split(x, sep='+')[1])) for x in df.TimeControl.values]
 #     temp_[['TimeControl_Base', 'TimeControl_Inc']]=[
 #     (int(str.split(x, sep='+')[0]), int(str.split(x, sep='+')[1])) for x in temp_.TimeControl]
-    temp_ = temp_.drop(columns=['TimeControl'])
-    return temp_
+    df = df.drop(columns=['TimeControl'])
+    return df
    
-    
-def clean_pickle(pickle_df, list_of_cols=None):
-    chess_checker_function(pickle_df)
-    temp_ = change_comp_columns(pickle_df)
-    chess_nan_checker(temp_)
-    temp_ = keep_decisive_results(temp_)
-    print(f'Keeping decisive results...')
-    temp_ = drop_no_move_games(temp_)
-    any_missing_emt(temp_)
-    temp_ = drop_uneeded_cols(temp_, list_of_cols)
-    temp_ = split_timeformat(temp_)
-    return temp_
-
-
-def clean_pickles(list_of_pickle_df, list_of_cols=None):
-    list_of_cleaned_pickle_df = []
-    for pickle_df in list_of_pickle_df:
-        list_of_cleaned_pickle_df.append(clean_pickle(pickle_df, list_of_cols))
-        
-    return list_of_cleaned_pickle_df
-
-
-def drop_duplicates(temp_):
-    pre_shape = temp_.shape
-    print(f'Shape pre-drop: {pre_shape}')
-    print(f'Dropping duplicates...')
-    temp_ = temp_[~temp_.duplicated(subset=[col for col in temp_.columns if col not in ['emt', 'moves']])]
-    post_shape = temp_.shape
-    print(f'Shape post-drop: {post_shape}\n Duplicates dropped: {pre_shape[0]-post_shape[0]}')        
-    return temp_
-
 
 def does_plycount_match_moves(df):
     '''
@@ -259,20 +233,72 @@ def does_plycount_match_moves(df):
         return True
     else:
         print('Not all PlyCount values match the length of moves-list')
-        return False
-    
+        return False    
 
-def concatenate_cleaned_pickles(list_of_pickle_df, list_of_cols=None, drop_dups=True):
-    temp_ = pd.concat(clean_pickles(list_of_pickle_df, list_of_cols)).reset_index(drop=True)
+    
+def clean_pickle(pickle_df, list_of_cols=None, filtering_steps=(True, True, True)):
+    '''
+    This will clean a pickled df
+    
+    Deafult value for filtering_steps will do all of them
+    
+    Pass a tuple for filtering_steps, their order being for dropping no move games, keeping decisive results and dropping uneeded columns
+    
+    ....
+    
+    '''
+    drop_no_move_game_, keep_decisive_results_, drop_uneeded_cols_ = filtering_steps
+    
+    chess_checker_function(pickle_df)
+    temp_ = change_comp_columns(pickle_df)
+    chess_nan_checker(temp_)
+    if drop_no_move_game_:
+        temp_ = drop_no_move_games(temp_)
+    does_plycount_match_moves(temp_)
+    any_missing_emt(temp_)
+    if keep_decisive_results_:
+        temp_ = keep_decisive_results(temp_)
+        print(f'Keeping decisive results...')
+    if drop_uneeded_cols_:
+        temp_ = drop_uneeded_cols(temp_, list_of_cols)
+    temp_ = split_timeformat(temp_)
+    return temp_
+
+
+def clean_pickles(list_of_pickle_df, list_of_cols=None, filtering_steps=(True, True, True)):
+    list_of_cleaned_pickle_df = []
+    for pickle_df in list_of_pickle_df:
+        list_of_cleaned_pickle_df.append(clean_pickle(pickle_df, list_of_cols, filtering_steps))
+        
+    return list_of_cleaned_pickle_df
+
+
+def drop_duplicates(df):
+    pre_shape = df.shape
+    print(f'Shape pre-drop: {pre_shape}')
+    print(f'Dropping duplicates...')
+    df = df[~df.duplicated(subset=[col for col in df.columns if col not in ['emt', 'moves']])]
+    post_shape = df.shape
+    print(f'Shape post-drop: {post_shape}\n Duplicates dropped: {pre_shape[0]-post_shape[0]}')
+    df = df.reset_index(drop=True)
+    return df
+
+
+def concatenate_cleaned_pickles(list_of_pickle_df, list_of_cols=None,
+                                filtering_steps=(True, True, True) , drop_dups=True):
+    '''
+    Pass a tuple for filtering_steps, their order being for: dropping no move games, keeping decisive results and dropping uneeded columns
+    '''
+    temp_ = pd.concat(clean_pickles(list_of_pickle_df, list_of_cols, filtering_steps)).reset_index(drop=True)
     does_plycount_match_moves(temp_)
     if drop_dups==True:
         temp_ = drop_duplicates(temp_)
         return temp_
     else:
         print('Not dropping duplicates...')
-        return temp_    
-
-     
+        return temp_ 
+    
+    
 def X_y_split_simple(df):
     X_ = df.drop(columns=['WhiteIsComp', 'BlackIsComp', 'NoComp'])
     y_ = df.loc[:,['WhiteIsComp', 'BlackIsComp', 'NoComp']]
@@ -361,14 +387,19 @@ def OHE_ECO(X_train, X_test):
     return X_train_temp_, X_test_temp_, ohe_
 
 
-def class_model_eval_logreg(class_model_, X_train_, X_test_, y_train_, y_test_, digits_=4):
+def print_accuracy(class_model_, X_train_, X_test_, y_train_, y_test_):
+    # print the accuracy on the training and test set
+    return print(f'The accuracy score on the training data is: {class_model_.score(X_train_, y_train_)}\nThe accuracy score on the testing data is: {class_model_.score(X_test_, y_test_)}')
+    
+
+
+def class_model_eval_logreg(class_model_, X_train_, X_test_, y_train_, y_test_, digits_=4, has_coeffs=True):
     '''
     Note: Intended for Logistic Regression (may work for others), but not a DT or Random Forest
     
     '''
     # print the accuracy on the training and test set
-    print(f'The accuracy score on the training data is: {class_model_.score(X_train_, y_train_)}')
-    print(f'The accuracy score on the testing data is: {class_model_.score(X_test_, y_test_)}')
+    print_accuracy(class_model_, X_train_, X_test_, y_train_, y_test_)
     
     # plot the confusion matrix
     plot_confusion_matrix(class_model_, X_test_, y_test_)
@@ -386,10 +417,12 @@ def class_model_eval_logreg(class_model_, X_train_, X_test_, y_train_, y_test_, 
         ['0', '1', 'accuracy']]
     
     # model coefficients
-    model_coeffs_ = pd.DataFrame(data=abs(class_model_.coef_),
-                                columns=class_model_.feature_names_in_).T
-    
-    return report_, model_results_, model_coeffs_
+    if has_coeffs:
+        model_coeffs_ = pd.DataFrame(data=abs(class_model_.coef_),
+                                    columns=class_model_.feature_names_in_).T
+        return report_, model_results_, model_coeffs_
+    else:
+        return report_, model_results_
 
 
 def extract_emt_elements(game_emts):

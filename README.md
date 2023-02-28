@@ -6,3 +6,4 @@ Data required is available for download from https://www.dropbox.com/sh/uqwcv9v7
 
 The python script to convert pgn to json was taken and modified from https://github.com/moritzhambach/Detecting-Cheating-in-Chess
 
+The 'while eval posit' and 'while grid search' were notebooks created to run code (i.e. while using stockfish to evaluate every position, and while performing grid searc to optimise models) in parallel to further analysis. 
